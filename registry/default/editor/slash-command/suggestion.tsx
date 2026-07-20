@@ -40,10 +40,36 @@ type SuggestionOptions = {
   enableVideos?: boolean;
 };
 
+// A native <video> element can only ever play a direct media file — it
+// can't point at a YouTube/Vimeo page, because neither platform exposes
+// a stable file URL to hotlink (the real video bytes are served through
+// their own player, by design). Those two need a real <iframe> embed
+// instead. This sniffs which shape a pasted URL needs and returns the
+// iframe src to use, or null if it looks like a direct file URL instead
+// (in which case the caller inserts a plain <video src> node).
+const YOUTUBE_URL_PATTERN = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/i;
+const VIMEO_URL_PATTERN = /vimeo\.com\/(?:video\/)?(\d+)/i;
+
+export const toVideoEmbedSrc = (url: string): string | null => {
+  const youtubeMatch = url.match(YOUTUBE_URL_PATTERN);
+  if (youtubeMatch) return `https://www.youtube-nocookie.com/embed/${youtubeMatch[1]}`;
+
+  const vimeoMatch = url.match(VIMEO_URL_PATTERN);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+
+  return null;
+};
+
 const requestVideoAndInsert = ({ editor, range }: ImagePickerContext): void => {
-  const src = window.prompt("Video URL (e.g. a GitHub user-attachments link)")?.trim();
-  if (!src) return;
-  editor.chain().focus().deleteRange(range).insertContent({ type: "video", attrs: { src } }).run();
+  const url = window.prompt("Video URL (direct file, YouTube, or Vimeo)")?.trim();
+  if (!url) return;
+  const embedSrc = toVideoEmbedSrc(url);
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .insertContent(embedSrc ? { type: "videoEmbed", attrs: { src: embedSrc } } : { type: "video", attrs: { src: url } })
+    .run();
 };
 
 const TABLE_SAFE_COMMANDS = new Set(["Image"]);

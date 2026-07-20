@@ -610,8 +610,10 @@ export function EditorWithSourceToggle() {
                     <code className={inlineCodeClass}>true</code>
                   </td>
                   <td className="p-2 align-top">
-                    Enables the Video slash command — inserts an externally-hosted{" "}
-                    <code className={inlineCodeClass}>{"<video>"}</code> embed (GitHub-style, no upload).
+                    Enables the Video slash command. Inserts a{" "}
+                    <code className={inlineCodeClass}>{"<video>"}</code> tag for direct file URLs, or a
+                    YouTube/Vimeo <code className={inlineCodeClass}>{"<iframe>"}</code> embed when the URL matches
+                    those platforms — no upload either way.
                   </td>
                 </tr>
                 <tr className="border-b">

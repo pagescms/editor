@@ -175,7 +175,7 @@ export function EditorWithSourceToggle() {
 | `imageFallback` | `"data-url" \| "prompt-url" \| "none"` | `"prompt-url"` | Fallback when no callback inserts an image. |
 | `maxImageBytes` | `number` | `1000000` | Max file size used by `"data-url"` fallback. |
 | `onPendingUploadsChange` | `(count: number) => void` | - | Receives pending optimistic upload count. |
-| `enableVideos` | `boolean` | `true` | Enables the Video slash command (inserts an externally-hosted `<video>` embed, GitHub-style — no upload). |
+| `enableVideos` | `boolean` | `true` | Enables the Video slash command. Inserts a `<video>` tag for direct file URLs, or a YouTube/Vimeo `<iframe>` embed when the URL matches those platforms — no upload either way. |
 | `markdownHtml` | `{ keep?: string[]; strip?: string[]; drop?: string[] }` | - | Controls raw HTML fragments in Markdown mode using root-element CSS selectors. |
 | `className` | `string` | - | Extra classes for the root wrapper (`cn-editor`). |
 | `editorClassName` | `string` | - | Extra classes for the WYSIWYG surface. |
