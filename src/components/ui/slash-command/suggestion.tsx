@@ -2,7 +2,7 @@ import { ReactRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import CommandsList, { type CommandsListHandle, type SlashItem } from "./commands-list";
-import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
+import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table, Video } from "lucide-react";
 import type { SuggestionOptions as TiptapSuggestionOptions } from "@tiptap/suggestion";
 
 export type ImagePickerUrlResult = {
@@ -37,6 +37,39 @@ type SuggestionOptions = {
   onInsertLocalImageFile?: ((context: ImagePickerContext & Omit<ImagePickerFileResult, "kind">) => void | Promise<void>) | null;
   enableImages?: boolean;
   imageSlashFallback?: SlashImageFallback;
+  enableVideos?: boolean;
+};
+
+// A native <video> element can only ever play a direct media file — it
+// can't point at a YouTube/Vimeo page, because neither platform exposes
+// a stable file URL to hotlink (the real video bytes are served through
+// their own player, by design). Those two need a real <iframe> embed
+// instead. This sniffs which shape a pasted URL needs and returns the
+// iframe src to use, or null if it looks like a direct file URL instead
+// (in which case the caller inserts a plain <video src> node).
+const YOUTUBE_URL_PATTERN = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/i;
+const VIMEO_URL_PATTERN = /vimeo\.com\/(?:video\/)?(\d+)/i;
+
+export const toVideoEmbedSrc = (url: string): string | null => {
+  const youtubeMatch = url.match(YOUTUBE_URL_PATTERN);
+  if (youtubeMatch) return `https://www.youtube-nocookie.com/embed/${youtubeMatch[1]}`;
+
+  const vimeoMatch = url.match(VIMEO_URL_PATTERN);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+
+  return null;
+};
+
+const requestVideoAndInsert = ({ editor, range }: ImagePickerContext): void => {
+  const url = window.prompt("Video URL (direct file, YouTube, or Vimeo)")?.trim();
+  if (!url) return;
+  const embedSrc = toVideoEmbedSrc(url);
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .insertContent(embedSrc ? { type: "videoEmbed", attrs: { src: embedSrc } } : { type: "video", attrs: { src: url } })
+    .run();
 };
 
 const TABLE_SAFE_COMMANDS = new Set(["Image"]);
@@ -137,6 +170,11 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
     },
   },
   {
+    title: "Video",
+    icon: Video,
+    command: ({ editor, range }) => requestVideoAndInsert({ editor, range }),
+  },
+  {
     title: "Table",
     icon: Table,
     command: ({ editor, range }) =>
@@ -164,6 +202,7 @@ const createSuggestion = (options: SuggestionOptions = {}): SlashSuggestion => (
     return getAllItems(options)
       .filter((item) => !isInTableCell || TABLE_SAFE_COMMANDS.has(item.title))
       .filter((item) => options.enableImages !== false || item.title !== "Image")
+      .filter((item) => options.enableVideos !== false || item.title !== "Video")
       .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 10);
   },

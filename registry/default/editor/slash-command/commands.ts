@@ -12,6 +12,7 @@ type SlashCommandsOptions = {
   onInsertLocalImageFile: ((context: ImagePickerContext & Omit<ImagePickerFileResult, "kind">) => void | Promise<void>) | null;
   enableImages: boolean;
   imageSlashFallback: SlashImageFallback;
+  enableVideos: boolean;
 };
 
 const SlashCommands = Extension.create<SlashCommandsOptions>({
@@ -23,6 +24,7 @@ const SlashCommands = Extension.create<SlashCommandsOptions>({
       onInsertLocalImageFile: null,
       enableImages: true,
       imageSlashFallback: "prompt-url",
+      enableVideos: true,
     };
   },
 
@@ -32,6 +34,7 @@ const SlashCommands = Extension.create<SlashCommandsOptions>({
       onInsertLocalImageFile: this.options.onInsertLocalImageFile,
       enableImages: this.options.enableImages,
       imageSlashFallback: this.options.imageSlashFallback,
+      enableVideos: this.options.enableVideos,
     });
 
     return [

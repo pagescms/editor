@@ -29,6 +29,7 @@ import {
   Link as LinkIcon,
   Strikethrough,
   Underline as UnderlineIcon,
+  Video as VideoIcon,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ import type {
   ImagePickerUrlResult,
   SlashImageFallback,
 } from "./slash-command/suggestion";
+import { toVideoEmbedSrc } from "./slash-command/suggestion";
 
 export type EditorFormat = "html" | "markdown";
 export type ImageFallbackMode = "data-url" | "prompt-url" | "none";
@@ -378,6 +380,162 @@ const UploadableImage = Image.extend({
   },
 });
 
+// External-video embed. Two node types share the "Video" slash command
+// (slash-command/suggestion.tsx), which sniffs the pasted URL and picks
+// one:
+//  - `video`: a real `<video src="..." controls width="100%"></video>`
+//    tag for direct file URLs (an already-hosted .mp4/.webm — a GitHub
+//    user-attachments link, a self-hosted file, etc). This is the only
+//    shape a native <video> element can ever play — it needs an actual
+//    media file, not a webpage.
+//  - `videoEmbed`: an `<iframe>` for YouTube/Vimeo URLs, which never
+//    expose a direct file to hotlink (their real video bytes are served
+//    through their own player). This is the only way to get those
+//    platforms playing inline.
+// Deliberately no upload pipeline for either: unlike images, a video is
+// always an already-hosted external URL, so inserting one is just "ask
+// for a URL".
+const Video = TiptapNode.create({
+  name: "video",
+  group: "block",
+  draggable: true,
+
+  addAttributes() {
+    return {
+      src: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("src"),
+        renderHTML: (attributes: { src?: string | null }) => (attributes.src ? { src: attributes.src } : {}),
+      },
+      width: {
+        default: "100%",
+        parseHTML: (element: HTMLElement) => element.getAttribute("width") || "100%",
+        renderHTML: (attributes: { width?: string | null }) => ({ width: attributes.width || "100%" }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "video[src]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["video", mergeAttributes(HTMLAttributes, { controls: "" })];
+  },
+
+  markdownTokenName: "video",
+
+  markdownTokenizer: {
+    name: "video",
+    level: "block",
+    start: "<video",
+    tokenize: (src: string) => {
+      const match = src.match(/^<video\b[^>]*>[\s\S]*?<\/video>/i);
+      if (!match) return undefined;
+      return { type: "video", raw: match[0] };
+    },
+  },
+
+  parseMarkdown(token) {
+    const raw = String(token["raw"] || "");
+    const srcMatch = raw.match(/\bsrc=["']([^"']+)["']/i);
+    if (!srcMatch) return [];
+    const widthMatch = raw.match(/\bwidth=["']([^"']+)["']/i);
+    return [
+      {
+        type: "video",
+        attrs: {
+          src: srcMatch[1],
+          width: widthMatch?.[1] ?? "100%",
+        },
+      },
+    ];
+  },
+
+  renderMarkdown(node) {
+    const src = typeof node.attrs?.["src"] === "string" ? node.attrs["src"] : "";
+    if (!src) return "";
+    const width = typeof node.attrs?.["width"] === "string" ? node.attrs["width"] : "100%";
+    return `<video src="${src}" controls width="${width}"></video>`;
+  },
+});
+
+const VIDEO_EMBED_IFRAME_ALLOW =
+  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+
+const VideoEmbed = TiptapNode.create({
+  name: "videoEmbed",
+  group: "block",
+  draggable: true,
+
+  addAttributes() {
+    return {
+      src: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("src"),
+        renderHTML: (attributes: { src?: string | null }) => (attributes.src ? { src: attributes.src } : {}),
+      },
+      width: {
+        default: "100%",
+        parseHTML: (element: HTMLElement) => element.getAttribute("width") || "100%",
+        renderHTML: (attributes: { width?: string | null }) => ({ width: attributes.width || "100%" }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "iframe[src]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "iframe",
+      mergeAttributes(HTMLAttributes, {
+        style: "aspect-ratio: 16 / 9;",
+        frameborder: "0",
+        allow: VIDEO_EMBED_IFRAME_ALLOW,
+        allowfullscreen: "",
+      }),
+    ];
+  },
+
+  markdownTokenName: "videoEmbed",
+
+  markdownTokenizer: {
+    name: "videoEmbed",
+    level: "block",
+    start: "<iframe",
+    tokenize: (src: string) => {
+      const match = src.match(/^<iframe\b[^>]*>[\s\S]*?<\/iframe>/i);
+      if (!match) return undefined;
+      return { type: "videoEmbed", raw: match[0] };
+    },
+  },
+
+  parseMarkdown(token) {
+    const raw = String(token["raw"] || "");
+    const srcMatch = raw.match(/\bsrc=["']([^"']+)["']/i);
+    if (!srcMatch) return [];
+    const widthMatch = raw.match(/\bwidth=["']([^"']+)["']/i);
+    return [
+      {
+        type: "videoEmbed",
+        attrs: {
+          src: srcMatch[1],
+          width: widthMatch?.[1] ?? "100%",
+        },
+      },
+    ];
+  },
+
+  renderMarkdown(node) {
+    const src = typeof node.attrs?.["src"] === "string" ? node.attrs["src"] : "";
+    if (!src) return "";
+    const width = typeof node.attrs?.["width"] === "string" ? node.attrs["width"] : "100%";
+    return `<iframe src="${src}" width="${width}" style="aspect-ratio: 16 / 9;" frameborder="0" allow="${VIDEO_EMBED_IFRAME_ALLOW}" allowfullscreen></iframe>`;
+  },
+});
+
 export type EditorProps = {
   value?: string;
   onChange?: (value: string) => void;
@@ -390,6 +548,7 @@ export type EditorProps = {
   maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
   onPendingUploadsChange?: (count: number) => void;
+  enableVideos?: boolean;
   markdownHtml?: MarkdownHtmlPolicy;
   className?: string;
   editorClassName?: string;
@@ -577,6 +736,7 @@ export function Editor({
   maxImageBytes = DEFAULT_MAX_IMAGE_BYTES,
   onRequestImage,
   onPendingUploadsChange,
+  enableVideos = true,
   markdownHtml,
   className,
   editorClassName,
@@ -585,10 +745,13 @@ export function Editor({
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [showTableActions, setShowTableActions] = useState(false);
   const [showAltInput, setShowAltInput] = useState(false);
+  const [showVideoInput, setShowVideoInput] = useState(false);
   const [isInTable, setIsInTable] = useState(false);
   const [isOnImage, setIsOnImage] = useState(false);
+  const [isOnVideo, setIsOnVideo] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [imageAltText, setImageAltText] = useState("");
+  const [videoUrlText, setVideoUrlText] = useState("");
   const bubbleMenuRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const lastEmittedValueRef = useRef<string>(value);
@@ -616,6 +779,8 @@ export function Editor({
         },
       }),
       UploadableImage,
+      Video,
+      VideoEmbed,
       Table,
       TableRow,
       TableHeader,
@@ -648,6 +813,7 @@ export function Editor({
         },
         enableImages,
         imageSlashFallback: imageFallback === "prompt-url" ? "prompt-url" : "none",
+        enableVideos,
       }),
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
@@ -793,7 +959,7 @@ export function Editor({
   }, [editor, tiptapSurfaceClass]);
 
   useEffect(() => {
-    if ((!showLinkInput && !showTableActions && !showAltInput) || !editor) return;
+    if ((!showLinkInput && !showTableActions && !showAltInput && !showVideoInput) || !editor) return;
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -804,6 +970,7 @@ export function Editor({
         setShowLinkInput(false);
         setShowTableActions(false);
         setShowAltInput(false);
+        setShowVideoInput(false);
       }
     };
 
@@ -811,7 +978,7 @@ export function Editor({
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [showLinkInput, showTableActions, showAltInput, editor]);
+  }, [showLinkInput, showTableActions, showAltInput, showVideoInput, editor]);
 
   useEffect(() => {
     if (!showLinkInput) return;
@@ -832,11 +999,14 @@ export function Editor({
         editor.isActive("tableHeader") ||
         editor.isActive("tableCell");
       const nextIsOnImage = enableImages && editor.isActive("image");
+      const nextIsOnVideo = enableVideos && (editor.isActive("video") || editor.isActive("videoEmbed"));
 
       setIsInTable(nextIsInTable);
       if (!nextIsInTable) setShowTableActions(false);
       setIsOnImage(nextIsOnImage);
       if (!nextIsOnImage) setShowAltInput(false);
+      setIsOnVideo(nextIsOnVideo);
+      if (!nextIsOnVideo) setShowVideoInput(false);
     };
 
     updateTableContext();
@@ -847,7 +1017,7 @@ export function Editor({
       editor.off("selectionUpdate", updateTableContext);
       editor.off("transaction", updateTableContext);
     };
-  }, [editor, enableImages]);
+  }, [editor, enableImages, enableVideos]);
 
   useEffect(() => {
     onPendingUploadsChange?.(pendingUploadsRef.current);
@@ -1209,6 +1379,55 @@ export function Editor({
     setShowAltInput(false);
   };
 
+  const toggleVideoInput = () => {
+    if (!enableVideos || !isOnVideo) return;
+    if (showVideoInput) {
+      setShowVideoInput(false);
+      return;
+    }
+    const nodeName = editor.isActive("videoEmbed") ? "videoEmbed" : "video";
+    const src = editor.getAttributes(nodeName)["src"];
+    setVideoUrlText(typeof src === "string" ? src : "");
+    setShowVideoInput(true);
+    setShowLinkInput(false);
+    setShowTableActions(false);
+    setShowAltInput(false);
+  };
+
+  const applyVideoUrl = () => {
+    if (!enableVideos || !isOnVideo) return;
+    const trimmed = videoUrlText.trim();
+    if (!trimmed) return;
+
+    const wasEmbed = editor.isActive("videoEmbed");
+    const embedSrc = toVideoEmbedSrc(trimmed);
+    const isEmbed = Boolean(embedSrc);
+
+    if (isEmbed === wasEmbed) {
+      // Same node kind — just swap the src in place.
+      editor
+        .chain()
+        .focus()
+        .updateAttributes(wasEmbed ? "videoEmbed" : "video", { src: embedSrc ?? trimmed })
+        .run();
+    } else {
+      // Switching between a direct-file <video> and a YouTube/Vimeo
+      // <iframe> is a different node type, not just a different attr —
+      // replace the node itself rather than trying to mutate it in place.
+      editor
+        .chain()
+        .focus()
+        .deleteSelection()
+        .insertContent({
+          type: isEmbed ? "videoEmbed" : "video",
+          attrs: { src: embedSrc ?? trimmed },
+        })
+        .run();
+    }
+
+    setShowVideoInput(false);
+  };
+
   const addRow = () => editor.chain().focus().addRowAfter().run();
   const removeRow = () => editor.chain().focus().deleteRow().run();
   const addColumn = () => editor.chain().focus().addColumnAfter().run();
@@ -1258,7 +1477,13 @@ export function Editor({
         shouldShow={({ editor: bubbleEditor, from, to, view, element }) => {
           const hasEditorFocus = view.hasFocus() || element.contains(document.activeElement);
           if (!hasEditorFocus) return false;
-          return showLinkInput || showTableActions || showAltInput || (!bubbleEditor.state.selection.empty && from !== to);
+          return (
+            showLinkInput ||
+            showTableActions ||
+            showAltInput ||
+            showVideoInput ||
+            (!bubbleEditor.state.selection.empty && from !== to)
+          );
         }}
       >
         <div className="flex flex-col gap-1">
@@ -1316,6 +1541,16 @@ export function Editor({
                 ALT
               </button>
             ) : null}
+            {isOnVideo
+              ? renderIconButton({
+                  label: "Video URL",
+                  icon: VideoIcon,
+                  onClick: toggleVideoInput,
+                  disabled,
+                  toggle: true,
+                  pressed: showVideoInput,
+                })
+              : null}
             {isInTable
               ? renderIconButton({
                   label: "Table",
@@ -1396,6 +1631,36 @@ export function Editor({
                 icon: X,
                 onClick: clearImageAlt,
                 disabled,
+                className: "ml-auto",
+              })}
+            </div>
+          ) : null}
+          {showVideoInput && isOnVideo ? (
+            <div
+              data-state="open"
+              className="border-border bg-popover data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-1 flex flex-nowrap items-center gap-0.5 overflow-x-auto rounded-md border p-1 shadow-sm duration-200 whitespace-nowrap"
+            >
+              <input
+                id="video-url"
+                type="url"
+                placeholder="Video URL (direct file, YouTube, or Vimeo)"
+                value={videoUrlText}
+                onChange={(event) => setVideoUrlText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    applyVideoUrl();
+                  }
+                }}
+                disabled={disabled}
+                className={`${toolbarInputClass} min-w-56 flex-1`}
+              />
+              {renderIconButton({
+                label: "Apply video URL",
+                icon: Check,
+                onClick: applyVideoUrl,
+                disabled: disabled || !videoUrlText.trim(),
                 className: "ml-auto",
               })}
             </div>
