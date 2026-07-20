@@ -2,7 +2,7 @@ import { ReactRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import CommandsList, { type CommandsListHandle, type SlashItem } from "./commands-list";
-import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
+import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table, Video } from "lucide-react";
 import type { SuggestionOptions as TiptapSuggestionOptions } from "@tiptap/suggestion";
 
 export type ImagePickerUrlResult = {
@@ -37,6 +37,13 @@ type SuggestionOptions = {
   onInsertLocalImageFile?: ((context: ImagePickerContext & Omit<ImagePickerFileResult, "kind">) => void | Promise<void>) | null;
   enableImages?: boolean;
   imageSlashFallback?: SlashImageFallback;
+  enableVideos?: boolean;
+};
+
+const requestVideoAndInsert = ({ editor, range }: ImagePickerContext): void => {
+  const src = window.prompt("Video URL (e.g. a GitHub user-attachments link)")?.trim();
+  if (!src) return;
+  editor.chain().focus().deleteRange(range).insertContent({ type: "video", attrs: { src } }).run();
 };
 
 const TABLE_SAFE_COMMANDS = new Set(["Image"]);
@@ -137,6 +144,11 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
     },
   },
   {
+    title: "Video",
+    icon: Video,
+    command: ({ editor, range }) => requestVideoAndInsert({ editor, range }),
+  },
+  {
     title: "Table",
     icon: Table,
     command: ({ editor, range }) =>
@@ -164,6 +176,7 @@ const createSuggestion = (options: SuggestionOptions = {}): SlashSuggestion => (
     return getAllItems(options)
       .filter((item) => !isInTableCell || TABLE_SAFE_COMMANDS.has(item.title))
       .filter((item) => options.enableImages !== false || item.title !== "Image")
+      .filter((item) => options.enableVideos !== false || item.title !== "Video")
       .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 10);
   },

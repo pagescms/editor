@@ -378,6 +378,78 @@ const UploadableImage = Image.extend({
   },
 });
 
+// External-video embed — aligned to GitHub's own `<video src="..." controls
+// width="100%"></video>` markdown/HTML embed format (the tag GitHub itself
+// generates when you drag a video file into an issue/PR). Deliberately has
+// no upload pipeline: unlike images, videos are always an already-hosted
+// external URL (e.g. a GitHub user-attachments link), so inserting one is
+// just "ask for a URL" — see the "Video" slash command in
+// slash-command/suggestion.tsx.
+const Video = TiptapNode.create({
+  name: "video",
+  group: "block",
+  draggable: true,
+
+  addAttributes() {
+    return {
+      src: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("src"),
+        renderHTML: (attributes: { src?: string | null }) => (attributes.src ? { src: attributes.src } : {}),
+      },
+      width: {
+        default: "100%",
+        parseHTML: (element: HTMLElement) => element.getAttribute("width") || "100%",
+        renderHTML: (attributes: { width?: string | null }) => ({ width: attributes.width || "100%" }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "video[src]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["video", mergeAttributes(HTMLAttributes, { controls: "" })];
+  },
+
+  markdownTokenName: "video",
+
+  markdownTokenizer: {
+    name: "video",
+    level: "block",
+    start: "<video",
+    tokenize: (src: string) => {
+      const match = src.match(/^<video\b[^>]*>[\s\S]*?<\/video>/i);
+      if (!match) return undefined;
+      return { type: "video", raw: match[0] };
+    },
+  },
+
+  parseMarkdown(token) {
+    const raw = String(token["raw"] || "");
+    const srcMatch = raw.match(/\bsrc=["']([^"']+)["']/i);
+    if (!srcMatch) return [];
+    const widthMatch = raw.match(/\bwidth=["']([^"']+)["']/i);
+    return [
+      {
+        type: "video",
+        attrs: {
+          src: srcMatch[1],
+          width: widthMatch?.[1] ?? "100%",
+        },
+      },
+    ];
+  },
+
+  renderMarkdown(node) {
+    const src = typeof node.attrs?.["src"] === "string" ? node.attrs["src"] : "";
+    if (!src) return "";
+    const width = typeof node.attrs?.["width"] === "string" ? node.attrs["width"] : "100%";
+    return `<video src="${src}" controls width="${width}"></video>`;
+  },
+});
+
 export type EditorProps = {
   value?: string;
   onChange?: (value: string) => void;
@@ -390,6 +462,7 @@ export type EditorProps = {
   maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
   onPendingUploadsChange?: (count: number) => void;
+  enableVideos?: boolean;
   markdownHtml?: MarkdownHtmlPolicy;
   className?: string;
   editorClassName?: string;
@@ -577,6 +650,7 @@ export function Editor({
   maxImageBytes = DEFAULT_MAX_IMAGE_BYTES,
   onRequestImage,
   onPendingUploadsChange,
+  enableVideos = true,
   markdownHtml,
   className,
   editorClassName,
@@ -616,6 +690,7 @@ export function Editor({
         },
       }),
       UploadableImage,
+      Video,
       Table,
       TableRow,
       TableHeader,
@@ -648,6 +723,7 @@ export function Editor({
         },
         enableImages,
         imageSlashFallback: imageFallback === "prompt-url" ? "prompt-url" : "none",
+        enableVideos,
       }),
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
