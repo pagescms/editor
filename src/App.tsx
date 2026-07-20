@@ -601,6 +601,21 @@ export function EditorWithSourceToggle() {
                 </tr>
                 <tr className="border-b">
                   <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>enableVideos</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>boolean</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>true</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    Enables the Video slash command — inserts an externally-hosted{" "}
+                    <code className={inlineCodeClass}>{"<video>"}</code> embed (GitHub-style, no upload).
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
                     <code className={inlineCodeClass}>className</code>
                   </td>
                   <td className="p-2 align-top">
